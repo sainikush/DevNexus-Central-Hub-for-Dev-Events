@@ -1,7 +1,7 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
-// Event document interface
-export interface IEvent extends Document {
+// Event document interface for type safety
+interface IEvent extends Document {
   title: string;
   slug: string;
   description: string;
@@ -20,7 +20,36 @@ export interface IEvent extends Document {
   updatedAt: Date;
 }
 
-const EventSchema = new Schema<IEvent>(
+// Helper function to generate URL-friendly slug from title
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+// Helper function to normalize date to ISO format (YYYY-MM-DD)
+function normalizeDateToISO(dateString: string): string {
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    throw new Error("Invalid date format");
+  }
+  return date.toISOString().split("T")[0];
+}
+
+// Helper function to normalize time format (HH:mm)
+function normalizeTimeFormat(timeString: string): string {
+  const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  if (!timeRegex.test(timeString.trim())) {
+    throw new Error("Invalid time format. Use HH:mm format");
+  }
+  return timeString.trim();
+}
+
+// Mongoose schema definition
+const eventSchema = new Schema<IEvent>(
   {
     title: {
       type: String,
@@ -31,6 +60,7 @@ const EventSchema = new Schema<IEvent>(
       type: String,
       unique: true,
       index: true,
+      sparse: true,
     },
     description: {
       type: String,
@@ -45,6 +75,7 @@ const EventSchema = new Schema<IEvent>(
     image: {
       type: String,
       required: [true, "Image URL is required"],
+      trim: true,
     },
     venue: {
       type: String,
@@ -66,11 +97,11 @@ const EventSchema = new Schema<IEvent>(
     },
     mode: {
       type: String,
-      required: [true, "Mode is required"],
       enum: {
         values: ["online", "offline", "hybrid"],
-        message: "Mode must be online, offline, or hybrid",
+        message: "Mode must be one of: online, offline, or hybrid",
       },
+      required: [true, "Mode is required"],
     },
     audience: {
       type: String,
@@ -81,8 +112,8 @@ const EventSchema = new Schema<IEvent>(
       type: [String],
       required: [true, "Agenda is required"],
       validate: {
-        validator: (arr: string[]) => arr.length > 0,
-        message: "Agenda must have at least one item",
+        validator: (v: string[]) => Array.isArray(v) && v.length > 0,
+        message: "Agenda must contain at least one item",
       },
     },
     organizer: {
@@ -94,93 +125,47 @@ const EventSchema = new Schema<IEvent>(
       type: [String],
       required: [true, "Tags are required"],
       validate: {
-        validator: (arr: string[]) => arr.length > 0,
-        message: "Tags must have at least one item",
+        validator: (v: string[]) => Array.isArray(v) && v.length > 0,
+        message: "Tags must contain at least one tag",
       },
     },
   },
   {
-    timestamps: true, // Auto-generates createdAt and updatedAt
+    timestamps: true,
   }
 );
 
-// Generates URL-friendly slug from title
-function generateSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "") // Remove special characters
-    .replace(/\s+/g, "-") // Replace spaces with hyphens
-    .replace(/-+/g, "-") // Replace multiple hyphens with single
-    .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
-}
-
-// Normalizes date string to ISO format (YYYY-MM-DD)
-function normalizeDate(dateStr: string): string {
-  const parsed = new Date(dateStr);
-  if (isNaN(parsed.getTime())) {
-    throw new Error(`Invalid date format: ${dateStr}`);
-  }
-  return parsed.toISOString().split("T")[0];
-}
-
-// Normalizes time to 24-hour format (HH:MM)
-function normalizeTime(timeStr: string): string {
-  const timeRegex = /^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i;
-  const match = timeStr.trim().match(timeRegex);
-
-  if (!match) {
-    throw new Error(`Invalid time format: ${timeStr}. Use HH:MM or HH:MM AM/PM`);
-  }
-
-  let hours = parseInt(match[1], 10);
-  const minutes = match[2];
-  const period = match[3]?.toUpperCase();
-
-  // Convert 12-hour to 24-hour format if AM/PM specified
-  if (period) {
-    if (period === "PM" && hours !== 12) {
-      hours += 12;
-    } else if (period === "AM" && hours === 12) {
-      hours = 0;
+// Pre-save hook: Generate slug from title, normalize date and time, validate required fields
+eventSchema.pre("save", async function (next) {
+  // Validate and normalize date to ISO format if modified
+  if (this.isModified("date")) {
+    try {
+      this.date = normalizeDateToISO(this.date);
+    } catch (error) {
+      return next(error instanceof Error ? error : new Error("Invalid date"));
     }
   }
 
-  return `${hours.toString().padStart(2, "0")}:${minutes}`;
-}
-
-// Pre-save hook: generates slug from title and normalizes date/time
-EventSchema.pre("save", async function (next) {
-  // Only regenerate slug if title is modified or document is new
-  if (this.isModified("title") || this.isNew) {
-    let baseSlug = generateSlug(this.title);
-    let slug = baseSlug;
-    let counter = 1;
-
-    // Ensure slug uniqueness by appending counter if needed
-    const Event = this.constructor as Model<IEvent>;
-    while (await Event.exists({ slug, _id: { $ne: this._id } })) {
-      slug = `${baseSlug}-${counter}`;
-      counter++;
+  // Validate and normalize time format if modified
+  if (this.isModified("time")) {
+    try {
+      this.time = normalizeTimeFormat(this.time);
+    } catch (error) {
+      return next(error instanceof Error ? error : new Error("Invalid time"));
     }
-    this.slug = slug;
   }
 
-  // Normalize date to ISO format
-  if (this.isModified("date") || this.isNew) {
-    this.date = normalizeDate(this.date);
-  }
-
-  // Normalize time to consistent 24-hour format
-  if (this.isModified("time") || this.isNew) {
-    this.time = normalizeTime(this.time);
+  // Generate or regenerate slug only if title changes
+  if (this.isModified("title")) {
+    this.slug = generateSlug(this.title);
   }
 
   next();
 });
 
-// Prevent model recompilation in development (Next.js hot reload)
-const Event: Model<IEvent> =
-  mongoose.models.Event || mongoose.model<IEvent>("Event", EventSchema);
+// Create or retrieve the Event model
+const Event =
+  mongoose.models.Event || mongoose.model<IEvent>("Event", eventSchema);
 
-export default Event;
+export type { IEvent };
+export { Event };

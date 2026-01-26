@@ -1,56 +1,65 @@
-import mongoose, { Schema, Document, Model, Types } from "mongoose";
-import Event from "./event.model";
+import mongoose, { Document, Schema, Types } from "mongoose";
+import { Event } from "./event.model";
 
-// Booking document interface
-export interface IBooking extends Document {
+// Booking document interface for type safety
+interface IBooking extends Document {
   eventId: Types.ObjectId;
   email: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Email validation regex (RFC 5322 simplified)
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Helper function to validate email format
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
 
-const BookingSchema = new Schema<IBooking>(
+// Mongoose schema definition
+const bookingSchema = new Schema<IBooking>(
   {
     eventId: {
       type: Schema.Types.ObjectId,
       ref: "Event",
       required: [true, "Event ID is required"],
-      index: true, // Index for faster event-based queries
+      index: true,
     },
     email: {
       type: String,
       required: [true, "Email is required"],
-      trim: true,
       lowercase: true,
+      trim: true,
       validate: {
-        validator: (email: string) => EMAIL_REGEX.test(email),
+        validator: isValidEmail,
         message: "Invalid email format",
       },
     },
   },
   {
-    timestamps: true, // Auto-generates createdAt and updatedAt
+    timestamps: true,
   }
 );
 
-// Pre-save hook: validates that referenced event exists
-BookingSchema.pre("save", async function (next) {
-  // Only validate eventId if it's modified or document is new
-  if (this.isModified("eventId") || this.isNew) {
-    const eventExists = await Event.exists({ _id: this.eventId });
+// Pre-save hook: Validate that the referenced event exists
+bookingSchema.pre("save", async function (next) {
+  try {
+    // Check if the referenced event exists in the database
+    const eventExists = await Event.findById(this.eventId);
+
     if (!eventExists) {
       throw new Error(`Event with ID ${this.eventId} does not exist`);
     }
-  }
 
-  next();
+    next();
+  } catch (error) {
+    next(error instanceof Error ? error : new Error("Event validation failed"));
+  }
 });
 
-// Prevent model recompilation in development (Next.js hot reload)
-const Booking: Model<IBooking> =
-  mongoose.models.Booking || mongoose.model<IBooking>("Booking", BookingSchema);
+// Create or retrieve the Booking model
+const Booking =
+  mongoose.models.Booking ||
+  mongoose.model<IBooking>("Booking", bookingSchema);
 
-export default Booking;
+export type { IBooking };
+export { Booking };
