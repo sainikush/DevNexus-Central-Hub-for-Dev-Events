@@ -33,6 +33,7 @@ const bookingSchema = new Schema<IBooking>(
         validator: isValidEmail,
         message: "Invalid email format",
       },
+      index: true,
     },
   },
   {
@@ -40,10 +41,35 @@ const bookingSchema = new Schema<IBooking>(
   }
 );
 
-// Pre-save hook: Validate that the referenced event exists
+/* ============================
+   Indexes for Performance
+   ============================ */
+
+// Faster lookups by event
+bookingSchema.index({ eventId: 1 });
+
+// Optimized queries for event bookings sorted by newest first
+bookingSchema.index({ eventId: 1, createdAt: -1 });
+
+// Faster user booking lookups
+bookingSchema.index({ email: 1 });
+
+// Enforce one booking per event per email (business rule)
+bookingSchema.index(
+  { eventId: 1, email: 1 },
+  {
+    unique: true,
+    name: "uniq_event_email",
+  }
+);
+
+/* ============================
+   Pre-save Validation
+   ============================ */
+
+// Ensure the referenced event exists before saving booking
 bookingSchema.pre("save", async function (next) {
   try {
-    // Check if the referenced event exists in the database
     const eventExists = await Event.findById(this.eventId);
 
     if (!eventExists) {
@@ -56,7 +82,7 @@ bookingSchema.pre("save", async function (next) {
   }
 });
 
-// Create or retrieve the Booking model
+// Create or retrieve the Booking model (Next.js safe)
 const Booking =
   mongoose.models.Booking ||
   mongoose.model<IBooking>("Booking", bookingSchema);
