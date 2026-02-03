@@ -1,19 +1,16 @@
 import EventCard from "@/components/EventCard";
 import ExploreBtn from "@/components/ExploreBtn";
-import { IEvent } from "@/database";
-import { events } from "@/lib/constants";
-import { cacheLife } from "next/cache";
+import { IEvent } from "@/database"; // Ensure this import matches your types
+import { getAllEvents } from "@/lib/actions/event.action"; // ✅ IMPORT THIS
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+// You don't need 'use cache' here for now, let's keep it simple to get the build passing.
+// Next.js caches database calls by default in Server Components unless you opt-out.
 
 const Page = async () => {
-
-   // Cache for 30 seconds
-'use cache';
-cacheLife('hours');
-
-  const response = await fetch(`${BASE_URL}/api/events`);
-  const { events } = await response.json();
+  // ❌ REMOVED: const response = await fetch(...) 
+  
+  // ✅ ADDED: Direct Database Call
+  const events = await getAllEvents();
 
   return (
     <section>
@@ -29,12 +26,16 @@ cacheLife('hours');
 
       <div className="mt-20 space-y-7">
         <h3>Featured Events</h3>
-        <ul className="events">
-          {events && events.length > 0 && events.map((event:IEvent) => (
-            <li key={event.title} className="list-none">
-             <EventCard {...event} />
-            </li>
-          ))}
+        <ul className="events grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {events && events.length > 0 ? (
+            events.map((event: IEvent) => (
+              <li key={event._id as string} className="list-none">
+                 <EventCard {...event} />
+              </li>
+            ))
+          ) : (
+             <p className="text-center col-span-full text-gray-500">No events found.</p>
+          )}
         </ul>
       </div>
     </section>
