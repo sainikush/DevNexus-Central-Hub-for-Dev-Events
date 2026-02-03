@@ -3,7 +3,7 @@ import connectToDatabase from "@/lib/mongodb";
 import { Event } from "@/database";
 import { v2 as cloudinary } from "cloudinary";
 
-// Fix 2: Handle undefined env vars
+// Fix: Handle undefined env vars safely
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
   api_key: process.env.CLOUDINARY_API_KEY || "",
@@ -24,14 +24,32 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fix 1: Convert File to Buffer
-    let tags = JSON.parse(formData.get("tags") as string || "[]");
-    let agenda = JSON.parse(formData.get("agenda") as string || "[]");
+    // ✅ FIX: Safe Parsing for Tags and Agenda
+    // This prevents the "SyntaxError: Unexpected token" crash
+    const rawTags = formData.get("tags") as string;
+    const rawAgenda = formData.get("agenda") as string;
 
+    let tags = [];
+    let agenda = [];
+
+    try {
+      tags = rawTags ? JSON.parse(rawTags) : [];
+    } catch (e) {
+      // If parsing fails, treat it as a comma-separated string
+      tags = rawTags ? rawTags.split(',').map((t) => t.trim()) : [];
+    }
+
+    try {
+      agenda = rawAgenda ? JSON.parse(rawAgenda) : [];
+    } catch (e) {
+      // If parsing fails, treat it as a single item
+      agenda = rawAgenda ? [rawAgenda] : [];
+    }
+
+    // Upload Image to Cloudinary
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Fix 3: Add <any> type to Promise
     const uploadResult = await new Promise<any>((resolve, reject) => {
       cloudinary.uploader
         .upload_stream(
@@ -50,18 +68,13 @@ export async function POST(request: Request) {
         .end(buffer);
     });
 
+    // Create the event object
     const eventData: any = Object.fromEntries(formData.entries());
 
-    // Fix 3 continued: No need to cast 'as any' here anymore, but keeping it is fine
+    // Assign the Cloudinary URL
     eventData.image = uploadResult.secure_url;
 
-    if (eventData.tags && typeof eventData.tags === 'string') {
-        try { eventData.tags = JSON.parse(eventData.tags); } catch {}
-    }
-    if (eventData.agenda && typeof eventData.agenda === 'string') {
-        try { eventData.agenda = JSON.parse(eventData.agenda); } catch {}
-    }
-
+    // Create in MongoDB (using the safely parsed tags/agenda)
     const createdEvent = await Event.create({
       ...eventData,
       tags: tags,
@@ -72,8 +85,17 @@ export async function POST(request: Request) {
       { message: "Event Created Successfully", event: createdEvent },
       { status: 201 }
     );
-  } catch (e) {
+  } catch (e: any) {
     console.error(e);
+    
+    // Handle Duplicate Slug Error
+    if (e.code === 11000) {
+      return NextResponse.json(
+        { message: "An event with this SLUG already exists. Please use a unique slug." },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       {
         message: "Event Creation Failed",
