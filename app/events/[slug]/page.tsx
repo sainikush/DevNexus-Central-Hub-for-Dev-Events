@@ -4,12 +4,12 @@ import { IEvent } from "@/database/event.model";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
-export const dynamic = "force-dynamic";
+
 
 // ... rest of your imports and code
 
 // Add this line at the top
-import { getSimilarEventsBySlug } from "@/lib/actions/event.action";
+import { getEventBySlug, getSimilarEventsBySlug } from "@/lib/actions/event.action";
 import { cacheLife } from "next/cache";
 
 const EventDetailItem = ({ icon, alt, label }: { icon: string; alt: string; label: string }) => (

@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/mongodb";
 import { Event } from "@/database";
 import { v2 as cloudinary } from "cloudinary";
 
+
 // Fix: Handle undefined env vars safely
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
