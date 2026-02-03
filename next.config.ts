@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  typeScript: {
+    ignoreBuildErrors: false,
+  },
   cacheComponents: true,
    images: {
     remotePatterns: [

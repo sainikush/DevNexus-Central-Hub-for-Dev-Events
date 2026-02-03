@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 // Add this line at the top
 import { getSimilarEventsBySlug } from "@/lib/actions/event.action";
+import { cacheLife } from "next/cache";
 
 const EventDetailItem = ({ icon, alt, label }: { icon: string; alt: string; label: string }) => (
      <div className="flex-row-gap-2 items-center">
@@ -38,10 +39,13 @@ const EventsDetails = async ({
 }: {
   params: Promise<{ slug: string }>;
 }) => {
+  'use cache';
+  cacheLife('hours')
   const { slug } = await params;
   const request = await fetch(`${BASE_URL}/api/events/${slug}`);
   const {
     event: {
+      _id,
       description,
       image,
       overview,
@@ -116,7 +120,9 @@ const similarEvents: IEvent[] = await getSimilarEventsBySlug(slug);
             ): (
                 <p className="text-sm">Be the first to Book your Spot!</p>
             )}
-            <BookEvent />
+            {/* Use '_id' from the list above, and 'slug' from the URL params */}
+                    <BookEvent eventId={_id} slug={slug} />
+   
           </div>
         </aside>
       </div>
