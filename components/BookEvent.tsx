@@ -18,7 +18,7 @@ const BookEvent = ({
 
     e.preventDefault();
 
-    const { success, error } = await createBooking({
+    const { success, message } = await createBooking({
       eventId,
       slug,
       email,
@@ -28,15 +28,17 @@ const BookEvent = ({
       setSubmitted(true);
       posthog.capture("event_booked", { eventId, slug, email });
     } else {
-      console.error("Booking failed", error);
-      posthog.captureException(error);
+
+      alert(message || "Something went wrong. Please try again.");
+      console.error("Booking failed", message);
+      posthog.captureException(new Error(message));
     }
   };
 
   return (
     <div id="book-event">
       {submitted ? (
-        <p className="test-sm">Thank you for signing up!</p>
+        <p className="text-sm">Thank you for signing up!</p>
       ) : (
         <form onSubmit={handleSubmit}>
           <div>
@@ -45,6 +47,7 @@ const BookEvent = ({
               type="email"
               value={email}
               id="email"
+              required
               placeholder="Enter your email Address"
               onChange={(e) => setEmail(e.target.value)}
             />
